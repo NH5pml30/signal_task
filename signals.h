@@ -104,7 +104,7 @@ namespace signals
     ~signal()
     {
       if (top_iterator != nullptr)
-        top_iterator->is_destroyed = true;
+        top_iterator->sig = nullptr;
     }
 
     connection connect(slot_t slot) noexcept
@@ -114,8 +114,8 @@ namespace signals
 
     void operator()(Args... args) const
     {
-      iteration_stack el(this, connections.begin(), top_iterator);
-      while (!el.is_destroyed && el.current != connections.end())
+      iteration_stack el(this);
+      while (el.is_valid() && el.current != connections.end())
         el.current++->slot(args...);
     }
 
@@ -127,24 +127,24 @@ namespace signals
       const signal *sig;
       typename connections_t::const_iterator current;
       iteration_stack *next;
-      bool is_destroyed = false;
 
-      iteration_stack(const signal *sig, typename connections_t::const_iterator current,
-                      iteration_stack *next)
-          : sig(sig), current(current), next(next)
+      iteration_stack(const signal *sig)
+          : sig(sig), current(sig->connections.begin()), next(sig->top_iterator)
       {
         sig->top_iterator = this;
       }
 
+      bool is_valid() const
+      {
+        return sig != nullptr;
+      }
+
       ~iteration_stack()
       {
-        if (is_destroyed)
-        {
-          if (next != nullptr)
-            next->is_destroyed = true;
-        }
-        else
+        if (is_valid())
           sig->top_iterator = next;
+        else if (next != nullptr)
+          next->sig = nullptr;
       }
     };
 
