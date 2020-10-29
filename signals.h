@@ -11,6 +11,9 @@ namespace signals
   template<typename... Args>
   class signal<void (Args...)>
   {
+  public:
+    class connection;
+
   private:
     using slot_t = std::function<void(Args...)>;
 
@@ -18,17 +21,24 @@ namespace signals
     {
       using base_t = intrusive::list_element<connection_tag>;
 
+      connection * get_this()
+      {
+        return static_cast<connection *>(this);
+      }
+
     public:
       connection_base() = default;
       connection_base(signal *sig) noexcept : sig(sig)
       {
-        sig->connections.push_front(*this);
+        sig->connections.push_front(*get_this());
       }
 
       connection_base(connection_base &&other) noexcept : base_t(std::move(other)), sig(other.sig)
       {
         change_enclosing_iterators(
-            other, [res = sig->connections.get_iterator(*this)](auto) { return res; });
+            other, [res = sig->connections.get_iterator(*get_this())](auto) {
+              return res;
+            });
       }
 
       connection_base &operator=(connection_base &&other) noexcept
@@ -36,7 +46,9 @@ namespace signals
         base_t::operator=(std::move(other));
         sig = other.sig;
         change_enclosing_iterators(
-            other, [res = sig->connections.get_iterator(*this)](auto) { return res; });
+            other, [res = sig->connections.get_iterator(*get_this())](auto) {
+              return res;
+            });
         return *this;
       }
 
@@ -104,11 +116,11 @@ namespace signals
     {
       iteration_stack el(this, connections.begin(), top_iterator);
       while (!el.is_destroyed && el.current != connections.end())
-        static_cast<const connection &>(*el.current++).slot(args...);
+        el.current++->slot(args...);
     }
 
   private:
-    using connections_t = intrusive::list<connection_base, connection_tag>;
+    using connections_t = intrusive::list<connection, connection_tag>;
 
     struct iteration_stack
     {
