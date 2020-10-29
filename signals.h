@@ -102,30 +102,9 @@ namespace signals
 
     void operator()(Args... args) const
     {
-      typename connections_t::const_iterator current = connections.end();
-      iteration_stack el = {current, top_iterator};
-      top_iterator = &el;
-      try
-      {
-        el.current = connections.begin();
-        while (el.current != connections.end())
-        {
-          auto copy = el.current;
-          ++el.current;
-          static_cast<const connection &>(*copy).slot(args...);
-          if (el.is_destroyed)
-            return;
-        }
-      }
-      catch (...)
-      {
-        if (!el.is_destroyed)
-          top_iterator = el.next;
-        throw;
-      }
-
-      if (!el.is_destroyed)
-        top_iterator = el.next;
+      iteration_stack el(this, connections.begin(), top_iterator);
+      while (!el.is_destroyed && el.current != connections.end())
+        static_cast<const connection &>(*el.current++).slot(args...);
     }
 
   private:
@@ -133,14 +112,27 @@ namespace signals
 
     struct iteration_stack
     {
+      const signal *sig;
       typename connections_t::const_iterator current;
       iteration_stack *next;
       bool is_destroyed = false;
 
+      iteration_stack(const signal *sig, typename connections_t::const_iterator current,
+                      iteration_stack *next)
+          : sig(sig), current(current), next(next)
+      {
+        sig->top_iterator = this;
+      }
+
       ~iteration_stack()
       {
-        if (is_destroyed && next != nullptr)
-          next->is_destroyed = true;
+        if (is_destroyed)
+        {
+          if (next != nullptr)
+            next->is_destroyed = true;
+        }
+        else
+          sig->top_iterator = next;
       }
     };
 
